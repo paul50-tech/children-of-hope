@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Children of Hope Collection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-content">
+      <div class="brand">
+        <span class="brand-mark">CH</span>
+        <div>
+          <p class="brand-title">Children of Hope</p>
+          <p class="brand-subtitle">Curated Collections for Bright Futures</p>
+        </div>
+      </div>
+      <nav class="site-nav">
+        <button class="nav-toggle" aria-label="Toggle navigation">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-links">
+          <li><a href="#hero">Home</a></li>
+          <li><a href="#collections">Collections</a></li>
+          <li><a href="#story">Our Story</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><button class="cart-button" data-open-cart>Cart <span class="cart-count" data-cart-count>0</span></button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section id="hero" class="hero">
+      <div class="container hero-content">
+        <div>
+          <p class="eyebrow">Children of Hope Collection</p>
+          <h1>Celebrate our journey with handcrafted, hope-filled pieces.</h1>
+          <p class="lead">Explore limited-run designs created with our community in mind, curated to inspire confidence, dignity, and joy for everyone.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#collections">Shop the Collection</a>
+            <button class="button secondary" data-open-admin>Admin Portal</button>
+          </div>
+        </div>
+        <div class="hero-card">
+          <img src="assets/img/hero-lookbook.svg" alt="Featured boutique look" />
+          <div class="product-highlight" data-featured>
+            <p class="product-name"></p>
+            <p class="product-price"></p>
+            <button class="button tertiary" data-featured-cta>View Details</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="container feature-grid">
+        <article>
+          <h3>Small-Batch Designers</h3>
+          <p>Partner with artisans crafting limited collections that keep your offerings fresh and exclusive.</p>
+        </article>
+        <article>
+          <h3>Ready to Sell</h3>
+          <p>Publish new arrivals instantly with product cards optimized for direct checkout integrations.</p>
+        </article>
+        <article>
+          <h3>Personal Styling</h3>
+          <p>Offer personalized recommendations and lookbook pairings to boost conversion and loyalty.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="collections" class="collections">
+      <div class="container section-header">
+        <div>
+          <p class="eyebrow">Signature Collections</p>
+          <h2>Shop hand-picked essentials for this season.</h2>
+        </div>
+        <form class="filters" data-product-filter>
+          <input type="search" placeholder="Search products" name="query" aria-label="Search products" />
+          <select name="category" aria-label="Filter by category">
+            <option value="all">All Categories</option>
+          </select>
+          <select name="sort" aria-label="Sort products">
+            <option value="newest">Newest Arrivals</option>
+            <option value="price-asc">Price: Low to High</option>
+            <option value="price-desc">Price: High to Low</option>
+          </select>
+        </form>
+      </div>
+
+      <div class="container">
+        <div class="product-grid" data-product-grid>
+          <!-- Products rendered by script -->
+        </div>
+        <p class="empty-state" data-empty-state hidden>No products yet. Post your first item to start selling.</p>
+      </div>
+    </section>
+
+    <section id="story" class="story">
+      <div class="container story-content">
+        <div>
+          <p class="eyebrow">Our Story</p>
+          <h2>Designed for tastemakers, by tastemakers.</h2>
+          <p>Children of Hope began as a neighborhood collective in Migori Town, where families and makers came together to celebrate everyone equally. We now curate inclusive boutique experiences that champion mindful fashion and storytelling for all, because hope belongs to everyone.</p>
+          <ul class="values-list">
+            <li>Hope for everyone &mdash; we champion inclusive collections for all families</li>
+            <li>Ethical sourcing from independent makers</li>
+            <li>Limited drops to keep inventory special yet accessible</li>
+          </ul>
+        </div>
+        <div class="story-card">
+          <img src="assets/img/studio-display.svg" alt="Boutique studio interior" />
+          <div class="story-note">
+            <h3>Visit the Showroom</h3>
+            <p>Posta, Migori Town</p>
+            <p>Monday &ndash; Saturday, 9am &ndash; 5pm</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" class="contact">
+      <div class="container contact-grid">
+        <div>
+          <p class="eyebrow">Let&rsquo;s Collaborate</p>
+          <h2>Book a styling session or request a trunk show.</h2>
+          <p>Email <a href="mailto:hello@childrenofhope.com">hello@childrenofhope.com</a> or call <a href="tel:+254702343293">+254 702 343 293</a>.</p>
+          <p>We ship across Kenya and offer on-demand delivery within Migori and neighboring counties.</p>
+        </div>
+        <form class="contact-form" data-contact-form>
+          <label>
+            Name
+            <input type="text" name="name" required />
+          </label>
+          <label>
+            Email
+            <input type="email" name="email" required />
+          </label>
+          <label>
+            What are you interested in?
+            <select name="interest" required>
+              <option value="Styling session">Styling session</option>
+              <option value="Pop-up collaboration">Pop-up collaboration</option>
+              <option value="Wholesale order">Wholesale order</option>
+            </select>
+          </label>
+          <label>
+            Message
+            <textarea name="message" rows="4" required></textarea>
+          </label>
+          <button type="submit" class="button primary">Send Inquiry</button>
+          <p class="form-message" data-form-message></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <p class="brand-title">Children of Hope</p>
+        <p>&copy; <span data-year></span> Children of Hope Collection. All rights reserved.</p>
+        <p class="footer-note">Built to help you publish collections, process orders, and shine a light on everyone you champion.</p>
+      </div>
+      <div>
+        <p class="footer-heading">Visit</p>
+        <p>Posta, Migori Town</p>
+      </div>
+      <div>
+        <p class="footer-heading">Connect</p>
+        <ul>
+          <li><a href="https://instagram.com" target="_blank" rel="noopener">Instagram</a></li>
+          <li><a href="https://pinterest.com" target="_blank" rel="noopener">Pinterest</a></li>
+          <li><a href="https://tiktok.com" target="_blank" rel="noopener">TikTok</a></li>
+          <li><a href="mailto:hello@childrenofhope.com">Email</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <div class="modal" data-cart-modal hidden>
+    <div class="modal-backdrop" data-close-cart></div>
+    <div class="modal-dialog">
+      <button class="modal-close" data-close-cart>&times;</button>
+      <h3>Your Cart</h3>
+      <div class="cart-items" data-cart-items></div>
+      <div class="cart-summary">
+        <p>Total: <span data-cart-total>KSh 0</span></p>
+        <button class="button primary" data-checkout>Checkout</button>
+      </div>
+      <p class="cart-empty" data-cart-empty hidden>Your cart is empty. Browse the latest drops to add items.</p>
+    </div>
+  </div>
+
+  <div class="modal" data-admin-modal hidden>
+    <div class="modal-backdrop" data-close-admin></div>
+    <div class="modal-dialog">
+      <button class="modal-close" data-close-admin>&times;</button>
+      <h3>Post a New Product</h3>
+      <p class="modal-subtitle">Only verified administrators can publish to the Children of Hope collection.</p>
+      <form data-product-form>
+        <input type="hidden" name="productId" />
+        <label>
+          Product name
+          <input type="text" name="name" required />
+        </label>
+        <label>
+          Category
+          <input type="text" name="category" placeholder="e.g. Dresses, Jewelry" required />
+        </label>
+        <label>
+          Price (KSh)
+          <input type="number" name="price" step="0.01" min="0" required />
+        </label>
+        <label>
+          Image URL
+          <input type="url" name="image" placeholder="https://" required />
+        </label>
+        <label>
+          Additional media (optional)
+          <textarea name="media" rows="3" placeholder="Paste one image or video URL per line"></textarea>
+        </label>
+        <p class="form-hint">Supports images (.jpg, .png, .webp) and videos (.mp4, YouTube, Vimeo). First item becomes the cover for shoppers.</p>
+        <label>
+          Description
+          <textarea name="description" rows="3" required></textarea>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="featured" />
+          Highlight this product on the homepage
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="button primary full" data-submit-product>Publish Product</button>
+          <button type="button" class="button secondary full" data-cancel-edit hidden>Cancel Editing</button>
+        </div>
+        <p class="form-message" data-product-message></p>
+      </form>
+      <button class="button secondary full" type="button" data-logout-admin hidden>Sign out</button>
+      <section class="admin-panel" data-admin-only>
+        <h4>Manage Collection</h4>
+        <div class="admin-note">Edit or remove items in the Children of Hope catalogue.</div>
+        <div class="admin-product-list" data-admin-product-list></div>
+      </section>
+      <section class="admin-panel" data-admin-only>
+        <h4>Community Activity</h4>
+        <div class="admin-note">Recent shopper and inquiry events (visible to admins only; connect a backend to aggregate data across all visitors).</div>
+        <div class="admin-event-summary" data-admin-event-summary></div>
+        <div class="admin-event-list" data-admin-event-list></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal" data-image-modal hidden>
+    <div class="modal-backdrop" data-close-image></div>
+    <div class="modal-dialog image-modal">
+      <button class="modal-close" data-close-image>&times;</button>
+      <div class="image-modal-media" data-modal-media>
+        <button class="gallery-nav prev" type="button" data-gallery-prev aria-label="Previous media">&#10094;</button>
+        <div class="image-modal-stage" data-modal-stage></div>
+        <button class="gallery-nav next" type="button" data-gallery-next aria-label="Next media">&#10095;</button>
+      </div>
+      <div class="image-modal-thumbs" data-modal-thumbs></div>
+      <div class="image-modal-body">
+        <h3 data-modal-name></h3>
+        <p class="image-modal-price" data-modal-price></p>
+        <p data-modal-description></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" data-login-modal hidden>
+    <div class="modal-backdrop" data-close-login></div>
+    <div class="modal-dialog">
+      <button class="modal-close" data-close-login>&times;</button>
+      <h3>Administrator Sign In</h3>
+      <p class="modal-subtitle">Enter the admin passcode to manage the Children of Hope collection.</p>
+      <form data-login-form>
+        <label>
+          Passcode
+          <input type="password" name="passcode" required />
+        </label>
+        <button type="submit" class="button primary full">Unlock Admin Portal</button>
+        <p class="form-message" data-login-message></p>
+      </form>
+    </div>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

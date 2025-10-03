@@ -1,0 +1,23 @@
+<svg width="900" height="650" viewBox="0 0 900 650" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="studioBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f9f4ee" />
+      <stop offset="100%" stop-color="#dfcdb8" />
+    </linearGradient>
+    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fefdfa" />
+      <stop offset="100%" stop-color="#e6d6c4" />
+    </linearGradient>
+  </defs>
+  <rect width="900" height="650" fill="url(#studioBg)" rx="32" />
+  <rect x="110" y="90" width="680" height="470" rx="28" fill="url(#canvas)" stroke="#ccb091" stroke-width="6" />
+  <rect x="150" y="130" width="600" height="180" fill="#d7bfa2" opacity="0.4" />
+  <rect x="180" y="360" width="540" height="150" rx="20" fill="#f4ecdf" stroke="#c6a378" stroke-width="4" />
+  <rect x="210" y="390" width="180" height="90" rx="14" fill="#ccb091" />
+  <rect x="420" y="390" width="240" height="90" rx="18" fill="#fbf6ee" stroke="#ccb091" stroke-width="4" />
+  <circle cx="240" cy="210" r="36" fill="#c59f72" opacity="0.75" />
+  <circle cx="660" cy="220" r="60" fill="#fff4e3" opacity="0.6" />
+  <path d="M240 430C260 420 290 420 310 430" stroke="#fef5ea" stroke-width="6" stroke-linecap="round" />
+  <path d="M520 430C540 420 580 420 600 430" stroke="#ccb091" stroke-width="6" stroke-linecap="round" opacity="0.7" />
+  <text x="200" y="560" font-family="'Work Sans', sans-serif" font-size="34" fill="#584737" opacity="0.85">Children of Hope Studio</text>
+</svg>

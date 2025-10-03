@@ -1,0 +1,76 @@
+<svg width="900" height="650" viewBox="0 0 900 650" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5f9ff" />
+      <stop offset="100%" stop-color="#e0ecff" />
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffdb8b" />
+      <stop offset="100%" stop-color="#ffb56b" />
+    </linearGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#85c68d" />
+      <stop offset="100%" stop-color="#5cab7a" />
+    </linearGradient>
+    <linearGradient id="dress" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff9db0" />
+      <stop offset="100%" stop-color="#f46f92" />
+    </linearGradient>
+    <linearGradient id="shirt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6ec6ff" />
+      <stop offset="100%" stop-color="#4988ff" />
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffe6c7" />
+      <stop offset="100%" stop-color="#ffd1ad" />
+    </linearGradient>
+  </defs>
+  <rect width="900" height="650" rx="36" fill="url(#sky)" />
+  <circle cx="720" cy="120" r="90" fill="url(#sun)" opacity="0.65" />
+  <path d="M0 420C120 360 260 360 380 420C500 480 640 470 900 380V650H0V420Z" fill="url(#hill)" />
+  <path d="M0 510C210 470 360 520 520 500C680 480 760 430 900 460V650H0V510Z" fill="url(#ground)" />
+
+  <g transform="translate(230 250)">
+    <ellipse cx="120" cy="270" rx="90" ry="18" fill="rgba(0,0,0,0.1)" />
+    <g>
+      <path d="M120 70C136 70 150 56 150 40C150 24 136 10 120 10C104 10 90 24 90 40C90 56 104 70 120 70Z" fill="#f6b97a" />
+      <path d="M82 110C86 82 104 70 120 70C136 70 154 82 158 110C165 160 166 220 166 270H74C74 220 75 160 82 110Z" fill="url(#dress)" />
+      <path d="M74 270C102 250 138 250 166 270H74Z" fill="#f46f92" />
+      <path d="M102 116C120 130 140 130 158 116" stroke="#ffffff" stroke-width="6" stroke-linecap="round" />
+      <circle cx="105" cy="44" r="6" fill="#513428" />
+      <circle cx="135" cy="44" r="6" fill="#513428" />
+      <path d="M111 58C116 64 124 64 129 58" stroke="#513428" stroke-width="4" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <g transform="translate(420 260)">
+    <ellipse cx="110" cy="260" rx="85" ry="16" fill="rgba(0,0,0,0.08)" />
+    <g>
+      <path d="M110 60C124 60 136 48 136 34C136 20 124 8 110 8C96 8 84 20 84 34C84 48 96 60 110 60Z" fill="#f6b97a" />
+      <path d="M70 104C78 74 98 60 110 60C132 60 150 78 154 110C160 160 160 210 160 258H60C60 210 60 160 70 104Z" fill="url(#shirt)" />
+      <path d="M60 258C84 240 136 240 160 258H60Z" fill="#4988ff" />
+      <path d="M92 122C106 134 122 134 136 122" stroke="#ffffff" stroke-width="6" stroke-linecap="round" />
+      <rect x="86" y="150" width="48" height="68" rx="10" fill="#f6b97a" />
+      <path d="M110 168C117 168 122 162 122 156C122 150 117 144 110 144C103 144 98 150 98 156C98 162 103 168 110 168Z" fill="#f4a563" />
+      <path d="M98 40C96 30 100 18 110 18C120 18 124 28 122 40" stroke="#513428" stroke-width="6" stroke-linecap="round" />
+      <circle cx="98" cy="36" r="5" fill="#513428" />
+      <circle cx="122" cy="36" r="5" fill="#513428" />
+      <path d="M104 50C108 54 114 54 118 50" stroke="#513428" stroke-width="4" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <g transform="translate(160 120)">
+    <path d="M0 0C70 40 110 100 130 180" stroke="#c59f72" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.35" />
+    <circle cx="60" cy="60" r="14" fill="#ffb56b" opacity="0.5" />
+    <circle cx="120" cy="120" r="10" fill="#ff9db0" opacity="0.4" />
+  </g>
+
+  <g transform="translate(620 180)">
+    <path d="M0 140C40 110 70 70 100 0" stroke="#a07ad0" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.35" />
+    <circle cx="20" cy="120" r="12" fill="#6ec6ff" opacity="0.4" />
+    <circle cx="60" cy="60" r="14" fill="#85c68d" opacity="0.45" />
+  </g>
+
+  <text x="80" y="560" font-family="'Playfair Display', serif" font-size="46" fill="#313045">Children of Hope Lookbook</text>
+  <text x="82" y="600" font-family="'Work Sans', sans-serif" font-size="20" fill="#6d665f">Seasonal stories crafted with joy, colour, and community.</text>
+</svg>
