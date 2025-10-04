@@ -1,0 +1,52 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Ibarra+Real+Nova:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+
+
+
+* {
+    box-sizing: border-box;
+    font-family: "Ibarra Real Nova", serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+}
+
+h1{
+
+    border: 2px solid grey;
+    border-radius: 500px;
+    padding: 5px;
+    margin: 18px;
+    width: 91%;
+    height: 100px;
+    text-align: center;
+    font-family: "Playfair Display", serif;
+}
+
+img {
+    width: 80%;
+}
+.first-paragraph {
+    color: rgb(25, 25, 112);
+}
+
+.biography {
+background-color: darkkhaki;
+color: black;
+padding: 10px;
+font-size: 2em;
+}
+
+span {
+    color: #f00;
+    font-weight: 400;
+    font-family: "Playfair Display", serif;
+}
+
+section {
+    padding: 1em;
+    color: #f00;
+}
