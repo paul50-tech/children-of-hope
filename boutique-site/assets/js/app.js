@@ -1,11 +1,10 @@
 const STORAGE_KEYS = {
-  PRODUCTS: 'childrenOfHopeProducts',
   CART: 'childrenOfHopeCart',
-  EVENTS: 'childrenOfHopeEvents'
+  EVENTS: 'childrenOfHopeEvents',
+  PRODUCTS: 'childrenOfHopeProducts'
 };
 
 const safeCrypto = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto : null;
-
 const createId = () => (safeCrypto ? safeCrypto.randomUUID() : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`);
 
 const ADMIN_SECRET = '0702343293';
@@ -13,8 +12,26 @@ const ADMIN_AUTH_KEY = 'childrenOfHopeAdminAuth';
 const MAX_EVENTS = 200;
 const FALLBACK_IMAGE = 'https://via.placeholder.com/900x600?text=Children+of+Hope';
 
+const supabaseConfig = window.CH_SUPABASE || {};
+const supabaseReady =
+  typeof window.supabase !== 'undefined' &&
+  Boolean(supabaseConfig.url && supabaseConfig.anonKey) &&
+  !supabaseConfig.url.includes('YOUR-PROJECT-REF') &&
+  !supabaseConfig.anonKey.includes('YOUR-SUPABASE-ANON-KEY');
+const supabaseClient = supabaseReady ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey) : null;
+const storageBucket = supabaseConfig.storageBucket || 'product-media';
+
+const dataProvider = supabaseReady ? createSupabaseProvider() : createLocalProvider();
+
+let productCache = [];
+let eventCache = [];
+let cartCache = [];
 let editingProductId = null;
 let currentGallery = { product: null, media: [], index: 0 };
+let adminState = {
+  passcode: localStorage.getItem(ADMIN_AUTH_KEY) === 'true',
+  supabaseSession: null
+};
 
 const defaultProducts = [
   {
@@ -123,6 +140,10 @@ const dom = {
   modalDescription: document.querySelector('[data-modal-description]'),
   loginForm: document.querySelector('[data-login-form]'),
   loginMessage: document.querySelector('[data-login-message]'),
+  loginEmailWrapper: document.querySelector('[data-login-email-wrapper]'),
+  loginEmail: document.querySelector('[data-login-email]'),
+  loginPassword: document.querySelector('[data-login-password]'),
+  loginHint: document.querySelector('[data-login-hint]'),
   logoutAdmin: document.querySelector('[data-logout-admin]'),
   cartModal: document.querySelector('[data-cart-modal]'),
   openCart: document.querySelector('[data-open-cart]'),
@@ -134,20 +155,27 @@ const dom = {
   checkout: document.querySelector('[data-checkout]'),
   contactForm: document.querySelector('[data-contact-form]'),
   contactMessage: document.querySelector('[data-form-message]'),
+  mediaFiles: document.querySelector('[data-media-files]'),
   year: document.querySelector('[data-year]')
 };
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+  init().catch((error) => console.error('Failed to initialise site', error));
+});
 
-function init() {
+async function init() {
   bootstrapYear();
-  bootstrapProducts();
-  bootstrapEvents();
+  configureLoginForm();
+  await dataProvider.init();
+  productCache = await dataProvider.listProducts();
   renderProducts();
   hydrateCategories();
   hydrateFeatured();
-  bootstrapCart();
+  cartCache = getCart();
+  updateCartUI(cartCache);
   bindEvents();
+  await refreshEvents();
+  renderAdminProducts();
   syncAdminState();
 }
 
@@ -157,22 +185,25 @@ function bootstrapYear() {
   }
 }
 
-function bootstrapProducts() {
-  const stored = safeParse(localStorage.getItem(STORAGE_KEYS.PRODUCTS));
-  if (!stored || !stored.length) {
-    const seeded = normalizeProducts(defaultProducts);
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(seeded));
-    return;
+function configureLoginForm() {
+  if (!dom.loginForm) return;
+  if (!supabaseReady) {
+    dom.loginEmailWrapper?.setAttribute('hidden', '');
+    if (dom.loginEmail) {
+      dom.loginEmail.removeAttribute('required');
+    }
+    if (dom.loginHint) {
+      dom.loginHint.textContent = 'Enter the admin passcode to unlock (default: 0702343293).';
+    }
+  } else {
+    dom.loginEmailWrapper?.removeAttribute('hidden');
+    if (dom.loginEmail) {
+      dom.loginEmail.setAttribute('required', 'true');
+    }
+    if (dom.loginHint) {
+      dom.loginHint.textContent = 'Sign in with your Supabase admin email and password.';
+    }
   }
-
-  const normalized = normalizeProducts(stored);
-  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(normalized));
-}
-
-function bootstrapCart() {
-  const storedCart = safeParse(localStorage.getItem(STORAGE_KEYS.CART)) || [];
-  localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(storedCart));
-  updateCartUI(storedCart);
 }
 
 function bindEvents() {
@@ -184,7 +215,7 @@ function bindEvents() {
     link.addEventListener('click', () => dom.navLinks?.classList.remove('open'));
   });
 
-  dom.openAdmin?.addEventListener('click', handleAdminGate);
+  dom.openAdmin?.addEventListener('click', () => handleAdminGate());
 
   dom.closeAdmin.forEach((el) => {
     el.addEventListener('click', () => toggleModal(dom.adminModal, false));
@@ -197,6 +228,29 @@ function bindEvents() {
   dom.closeImage.forEach((el) => {
     el.addEventListener('click', () => toggleModal(dom.imageModal, false));
   });
+
+  dom.productForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    handleProductSubmit().catch((error) => {
+      console.error('Failed to save product', error);
+      showFormMessage(dom.productMessage, 'Could not save product. Please try again.');
+    });
+  });
+
+  dom.filterForm?.addEventListener('input', debounce(() => renderProducts(), 200));
+  dom.checkout?.addEventListener('click', handleCheckout);
+  dom.contactForm?.addEventListener('submit', handleContactSubmit);
+  dom.loginForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    handleAdminLogin().catch((error) => {
+      console.error('Admin login failed', error);
+      showFormMessage(dom.loginMessage, 'Could not sign in. Please try again.');
+    });
+  });
+  dom.logoutAdmin?.addEventListener('click', () => {
+    handleAdminLogout().catch((error) => console.error('Admin logout failed', error));
+  });
+  dom.cancelEdit?.addEventListener('click', () => handleCancelEdit());
 
   dom.galleryPrev?.addEventListener('click', () => stepGallery(-1));
   dom.galleryNext?.addEventListener('click', () => stepGallery(1));
@@ -211,33 +265,14 @@ function bindEvents() {
   });
 
   dom.openCart?.addEventListener('click', () => toggleModal(dom.cartModal, true));
-
   dom.closeCart.forEach((el) => {
     el.addEventListener('click', () => toggleModal(dom.cartModal, false));
-  });
-
-  dom.productForm?.addEventListener('submit', handleProductSubmit);
-  dom.filterForm?.addEventListener('input', debounce(handleFilterChange, 200));
-  dom.checkout?.addEventListener('click', handleCheckout);
-  dom.contactForm?.addEventListener('submit', handleContactSubmit);
-  dom.loginForm?.addEventListener('submit', handleAdminLogin);
-  dom.logoutAdmin?.addEventListener('click', handleAdminLogout);
-  dom.cancelEdit?.addEventListener('click', () => handleCancelEdit(true));
-
-  dom.featuredCTA?.addEventListener('click', () => {
-    const featuredId = dom.featuredCTA?.dataset.id;
-    if (!featuredId) return;
-    const productEl = dom.productGrid?.querySelector(`[data-product-id="${featuredId}"]`);
-    productEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    productEl?.classList.add('pulse');
-    setTimeout(() => productEl?.classList.remove('pulse'), 1600);
   });
 
   document.addEventListener('keydown', handleKeyDown);
 }
 
-function handleProductSubmit(event) {
-  event.preventDefault();
+async function handleProductSubmit() {
   if (!dom.productForm) return;
 
   if (!isAdmin()) {
@@ -246,7 +281,7 @@ function handleProductSubmit(event) {
   }
 
   const formData = new FormData(dom.productForm);
-  const candidate = {
+  const baseProduct = {
     name: (formData.get('name') || '').toString().trim(),
     category: (formData.get('category') || '').toString().trim(),
     price: Number(formData.get('price')),
@@ -255,63 +290,74 @@ function handleProductSubmit(event) {
     featured: Boolean(formData.get('featured'))
   };
 
-  if (!candidate.name || !candidate.category || !candidate.price || !candidate.image) {
-    showFormMessage(dom.productMessage, 'Please fill in all required fields.');
+  const mediaInput = (formData.get('media') || '').toString();
+  const fileList = dom.mediaFiles?.files;
+  const selectedFiles = fileList ? Array.from(fileList) : [];
+
+  if (!baseProduct.name || !baseProduct.category || !baseProduct.price || (!baseProduct.image && selectedFiles.length === 0)) {
+    showFormMessage(dom.productMessage, 'Please provide the required fields and at least one media item.');
     return;
   }
 
-  const mediaInput = (formData.get('media') || '').toString();
-  const mediaList = buildMediaList(candidate.image, mediaInput);
-  candidate.media = mediaList;
-  candidate.image = getPrimaryImageUrl(mediaList);
-
-  const products = getProducts();
-  const isEditing = Boolean(editingProductId);
-
-  if (isEditing) {
-    const index = products.findIndex((item) => item.id === editingProductId);
-    if (index === -1) {
-      showFormMessage(dom.productMessage, 'Unable to update this product. Please refresh and try again.');
-      return;
-    }
-
-    const original = products[index];
-    const updated = {
-      ...original,
-      ...candidate,
-      price: candidate.price,
-      featured: candidate.featured,
-      media: mediaList,
-      image: candidate.image
-    };
-
-    products[index] = updated;
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    renderProducts();
-    hydrateCategories();
-    hydrateFeatured();
-    showFormMessage(dom.productMessage, 'Product details updated.');
-    logEvent('product.update', { id: updated.id, name: updated.name });
-    handleCancelEdit(true);
-    setTimeout(() => showFormMessage(dom.productMessage, ''), 3000);
-  } else {
-    const product = {
-      id: createId(),
-      ...candidate,
-      createdAt: Date.now()
-    };
-    products.push(product);
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    renderProducts();
-    hydrateCategories();
-    hydrateFeatured();
-    dom.productForm.reset();
-    showFormMessage(dom.productMessage, 'Product published. It is now visible in the collection.');
-    logEvent('product.create', { id: product.id, name: product.name });
-    setTimeout(() => showFormMessage(dom.productMessage, ''), 3000);
+  if (selectedFiles.length && !dataProvider.uploadMedia) {
+    showFormMessage(dom.productMessage, 'Uploading files requires Supabase storage configuration.');
+    return;
   }
 
-  renderAdminDashboard();
+  const productId = editingProductId || createId();
+  let mediaList = buildMediaList(baseProduct.image, mediaInput);
+
+  if (selectedFiles.length && dataProvider.uploadMedia) {
+    const uploads = [];
+    for (const file of selectedFiles) {
+      const upload = await dataProvider.uploadMedia(productId, file);
+      uploads.push(upload);
+    }
+    mediaList = mediaList.concat(uploads);
+    if (!baseProduct.image && uploads.length) {
+      baseProduct.image = uploads[0].url;
+    }
+  }
+
+  if (!mediaList.length) {
+    mediaList.push(createMediaItem(baseProduct.image || FALLBACK_IMAGE));
+  }
+
+  const existing = editingProductId ? getProducts().find((item) => item.id === productId) : null;
+  const productRecord = {
+    id: productId,
+    name: baseProduct.name,
+    category: baseProduct.category,
+    price: baseProduct.price,
+    image: baseProduct.image || getPrimaryImageUrl(mediaList),
+    media: mediaList,
+    description: baseProduct.description,
+    featured: baseProduct.featured,
+    createdAt: existing?.createdAt || Date.now()
+  };
+
+  try {
+    if (editingProductId) {
+      await dataProvider.updateProduct(productId, productRecord);
+      showFormMessage(dom.productMessage, 'Product details updated.');
+      await logEvent('product.update', { id: productId, name: productRecord.name });
+    } else {
+      await dataProvider.createProduct(productRecord);
+      showFormMessage(dom.productMessage, 'Product published. It is now visible in the collection.');
+      await logEvent('product.create', { id: productId, name: productRecord.name });
+    }
+
+    dom.productForm.reset();
+    if (dom.mediaFiles) {
+      dom.mediaFiles.value = '';
+    }
+    handleCancelEdit(true);
+    await refreshProducts();
+    setTimeout(() => showFormMessage(dom.productMessage, ''), 3000);
+  } catch (error) {
+    console.error('Failed to save product', error);
+    showFormMessage(dom.productMessage, error.message || 'Could not save product. Please try again.');
+  }
 }
 
 function handleFilterChange() {
@@ -319,12 +365,11 @@ function handleFilterChange() {
 }
 
 function handleCheckout() {
-  const cart = getCart();
-  if (!cart.length) {
+  if (!cartCache.length) {
     return;
   }
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  logEvent('checkout.start', { items: cart.length, total });
+  const total = cartCache.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  logEvent('checkout.start', { items: cartCache.length, total });
   alert('Checkout placeholder: connect your preferred payment gateway or e-commerce platform.');
 }
 
@@ -346,13 +391,14 @@ function toggleModal(modal, open) {
     modal.removeAttribute('hidden');
     document.body.style.overflow = 'hidden';
     if (modal === dom.adminModal) {
-      renderAdminDashboard();
+      renderAdminProducts();
+      renderAdminEvents();
     }
   } else {
     modal.setAttribute('hidden', '');
     document.body.style.overflow = '';
-    if (modal === dom.loginModal) {
-      dom.loginForm?.reset();
+    if (modal === dom.loginModal && dom.loginForm) {
+      dom.loginForm.reset();
       showFormMessage(dom.loginMessage, '');
     }
     if (modal === dom.adminModal) {
@@ -385,160 +431,287 @@ function handleKeyDown(event) {
 
 function handleAdminGate() {
   if (isAdmin()) {
-    renderAdminDashboard();
     toggleModal(dom.adminModal, true);
+    renderAdminProducts();
+    renderAdminEvents();
   } else {
     toggleModal(dom.loginModal, true);
   }
 }
 
-function handleAdminLogin(event) {
-  event.preventDefault();
+async function handleAdminLogin() {
   if (!dom.loginForm) return;
-
-  const formData = new FormData(dom.loginForm);
-  const passcode = (formData.get('passcode') || '').toString().trim();
-
-  if (!passcode) {
-    showFormMessage(dom.loginMessage, 'Enter the admin passcode.');
-    return;
-  }
-
-  if (passcode !== ADMIN_SECRET) {
-    showFormMessage(dom.loginMessage, 'Incorrect passcode. Please try again.');
-    return;
-  }
-
-  localStorage.setItem(ADMIN_AUTH_KEY, 'true');
-  dom.loginForm.reset();
   showFormMessage(dom.loginMessage, '');
-  toggleModal(dom.loginModal, false);
-  syncAdminState();
-  renderAdminDashboard();
-  handleCancelEdit(true);
-  logEvent('admin.login', {});
-  toggleModal(dom.adminModal, true);
+
+  if (supabaseReady) {
+    const email = (dom.loginEmail?.value || '').trim();
+    const password = (dom.loginPassword?.value || '').trim();
+    if (!email || !password) {
+      showFormMessage(dom.loginMessage, 'Enter your email and password.');
+      return;
+    }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) {
+      showFormMessage(dom.loginMessage, error.message || 'Unable to sign in.');
+      return;
+    }
+    adminState.supabaseSession = data.session;
+    toggleModal(dom.loginModal, false);
+    await refreshProducts();
+    await refreshEvents();
+    syncAdminState();
+    logEvent('admin.login', { email });
+    toggleModal(dom.adminModal, true);
+  } else {
+    const passcode = (dom.loginPassword?.value || '').trim();
+    if (passcode !== ADMIN_SECRET) {
+      showFormMessage(dom.loginMessage, 'Incorrect passcode. Please try again.');
+      return;
+    }
+    adminState.passcode = true;
+    localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+    toggleModal(dom.loginModal, false);
+    syncAdminState();
+    logEvent('admin.login', {});
+    toggleModal(dom.adminModal, true);
+  }
 }
 
-function handleAdminLogout() {
-  localStorage.removeItem(ADMIN_AUTH_KEY);
+async function handleAdminLogout() {
+  if (supabaseReady) {
+    await supabaseClient.auth.signOut();
+    adminState.supabaseSession = null;
+    await refreshEvents();
+  } else {
+    adminState.passcode = false;
+    localStorage.removeItem(ADMIN_AUTH_KEY);
+  }
   toggleModal(dom.adminModal, false);
-  handleCancelEdit(true);
   syncAdminState();
-  renderAdminDashboard();
   logEvent('admin.logout', {});
   alert('You have signed out of the Children of Hope admin portal.');
 }
 
 function renderProducts() {
   if (!dom.productGrid) return;
-
-  const products = getProducts();
-  const filters = getFilters();
-  const filtered = applyFilters(products, filters);
+  const products = applyFilters(getProducts(), getFilters());
 
   dom.productGrid.innerHTML = '';
 
-  if (!filtered.length) {
+  if (!products.length) {
     dom.emptyState?.removeAttribute('hidden');
     return;
   }
   dom.emptyState?.setAttribute('hidden', '');
 
-  filtered.forEach((product) => {
+  products.forEach((product) => {
     const card = createProductCard(product);
     dom.productGrid.appendChild(card);
   });
 }
 
-function getProducts() {
-  const stored = safeParse(localStorage.getItem(STORAGE_KEYS.PRODUCTS)) || [];
-  return normalizeProducts(stored);
-}
-
-function getCart() {
-  return safeParse(localStorage.getItem(STORAGE_KEYS.CART)) || [];
-}
-
-function saveCart(cart) {
-  localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
-  updateCartUI(cart);
-}
-
-function getFilters() {
-  if (!dom.filterForm) return { query: '', category: 'all', sort: 'newest' };
-  const formData = new FormData(dom.filterForm);
-  return {
-    query: (formData.get('query') || '').toLowerCase(),
-    category: formData.get('category') || 'all',
-    sort: formData.get('sort') || 'newest'
-  };
-}
-
-function applyFilters(products, { query, category, sort }) {
-  let result = [...products];
-
-  if (query) {
-    result = result.filter((product) => {
-      return [product.name, product.category, product.description]
-        .join(' ')
-        .toLowerCase()
-        .includes(query);
-    });
+function renderAdminProducts() {
+  if (!dom.adminProductList) return;
+  const products = [...getProducts()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!products.length) {
+    dom.adminProductList.innerHTML = '<div class=\"admin-event-empty\">No products yet. Publish your first piece to see it listed here.</div>';
+    return;
   }
 
-  if (category && category !== 'all') {
-    result = result.filter((product) => product.category === category);
-  }
+  dom.adminProductList.innerHTML = '';
 
-  result.sort((a, b) => {
-    if (sort === 'price-asc') return a.price - b.price;
-    if (sort === 'price-desc') return b.price - a.price;
-    return b.createdAt - a.createdAt;
-  });
-
-  return result;
-}
-
-function createProductCard(product) {
-  const card = document.createElement('article');
-  card.className = 'product-card';
-  card.dataset.productId = product.id;
-
-  const media = getProductMedia(product);
-  const cover = media[0];
-  const coverMarkup = renderProductCover(cover, product.name);
-
-  card.innerHTML = `
-    <button type="button" class="product-image-button" data-view-product="${product.id}">
-      ${coverMarkup}
-    </button>
-    <div class="product-body">
-      <h3>${product.name}</h3>
-      <p>${product.description}</p>
-      <div class="product-footer">
-        <span class="product-price-tag">${currencyFormatter.format(product.price)}</span>
-        <button class="button secondary" data-add-to-cart="${product.id}">Add to Cart</button>
+  products.forEach((product) => {
+    const row = document.createElement('article');
+    row.className = 'admin-product-row';
+    const featuredPill = product.featured ? '<span class=\"pill\">Featured</span>' : '';
+    row.innerHTML = `
+      <header>
+        <h5>${product.name}</h5>
+        ${featuredPill}
+      </header>
+      <div class=\"meta\">${product.category} • ${currencyFormatter.format(product.price)}</div>
+      <div class=\"meta\">${product.media?.length || 0} media item${product.media?.length === 1 ? '' : 's'}</div>
+      <div class=\"meta\">Published ${formatTimestamp(product.createdAt)}</div>
+      <div class=\"admin-product-actions\">
+        <button data-edit-product=\"${product.id}\">Edit</button>
+        <button data-delete-product=\"${product.id}\">Remove</button>
       </div>
-    </div>
+    `;
+
+    row.querySelector('[data-edit-product]')?.addEventListener('click', () => handleEditProduct(product.id));
+    row.querySelector('[data-delete-product]')?.addEventListener('click', () => {
+      handleDeleteProduct(product.id).catch((error) => console.error('Failed to delete product', error));
+    });
+
+    dom.adminProductList.appendChild(row);
+  });
+}
+
+function renderAdminEvents() {
+  if (!dom.adminEventList || !dom.adminEventSummary) return;
+  const events = getEventsList();
+  if (!events.length) {
+    dom.adminEventSummary.innerHTML = '<div class=\"admin-note\">No activity recorded yet. Shopper and inquiry events will appear here once your community interacts with the site.</div>';
+    dom.adminEventList.innerHTML = '<div class=\"admin-event-empty\">No events logged.</div>';
+    return;
+  }
+
+  const summary = summarizeEvents(events);
+  dom.adminEventSummary.innerHTML = `
+    <span><strong>${events.length}</strong> total events logged</span>
+    <span><strong>${summary['product.viewImage'] || 0}</strong> gallery views</span>
+    <span><strong>${summary['cart.add'] || 0}</strong> cart additions</span>
+    <span><strong>${summary['checkout.start'] || 0}</strong> checkout attempts</span>
+    <span><strong>${summary['contact.submit'] || 0}</strong> inquiries received</span>
   `;
 
-  card.querySelector('[data-view-product]')?.addEventListener('click', () => openImageModal(product));
-  card.querySelector('[data-add-to-cart]')?.addEventListener('click', () => addToCart(product));
-  return card;
+  const recent = events.slice(0, 20);
+  dom.adminEventList.innerHTML = '';
+
+  recent.forEach((event) => {
+    const row = document.createElement('article');
+    row.className = 'admin-event-row';
+    row.innerHTML = `
+      <header>
+        <h5>${formatEventLabel(event.type, event.detail)}</h5>
+        <span class=\"pill\">${getEventCategory(event.type)}</span>
+      </header>
+      <div class=\"meta\">${formatTimestamp(event.createdAt)}</div>
+      <div class=\"meta\">${formatEventDetail(event.type, event.detail)}</div>
+    `;
+    dom.adminEventList.appendChild(row);
+  });
+}
+
+function handleEditProduct(id) {
+  if (!dom.productForm || !isAdmin()) return;
+  const product = getProducts().find((item) => item.id === id);
+  if (!product) return;
+
+  editingProductId = product.id;
+  const idField = dom.productForm.querySelector('input[name="productId"]');
+  const nameField = dom.productForm.querySelector('input[name="name"]');
+  const categoryField = dom.productForm.querySelector('input[name="category"]');
+  const priceField = dom.productForm.querySelector('input[name="price"]');
+  const imageField = dom.productForm.querySelector('input[name="image"]');
+  const descriptionField = dom.productForm.querySelector('textarea[name="description"]');
+  const mediaField = dom.productForm.querySelector('textarea[name="media"]');
+  const featuredField = dom.productForm.querySelector('input[name="featured"]');
+
+  if (idField) idField.value = product.id;
+  if (nameField) nameField.value = product.name;
+  if (categoryField) categoryField.value = product.category;
+  if (priceField) priceField.value = product.price ?? '';
+  if (imageField) imageField.value = product.image;
+  if (descriptionField) descriptionField.value = product.description;
+  if (mediaField) {
+    const extras = getProductMedia(product)
+      .slice(1)
+      .map((item) => item.url)
+      .join('\n');
+    mediaField.value = extras;
+  }
+  if (featuredField) {
+    featuredField.checked = Boolean(product.featured);
+  }
+  if (dom.mediaFiles) {
+    dom.mediaFiles.value = '';
+  }
+
+  if (dom.submitProduct) {
+    dom.submitProduct.textContent = 'Update Product';
+  }
+  dom.cancelEdit?.removeAttribute('hidden');
+  showFormMessage(dom.productMessage, 'Editing product. Update the details and click Update Product to save.');
+  dom.productForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function handleDeleteProduct(id) {
+  if (!isAdmin()) return;
+  const target = getProducts().find((item) => item.id === id);
+  if (!target) return;
+
+  const confirmed = confirm(`Remove "${target.name}" from the collection?`);
+  if (!confirmed) return;
+
+  await dataProvider.deleteProduct(id);
+  await refreshProducts();
+  logEvent('product.delete', { id: target.id, name: target.name });
+  showFormMessage(dom.productMessage, 'Product removed from the collection.');
+  setTimeout(() => showFormMessage(dom.productMessage, ''), 3000);
+}
+
+function handleCancelEdit(silent = false) {
+  if (!dom.productForm) return;
+  editingProductId = null;
+  dom.productForm.reset();
+  const idField = dom.productForm.querySelector('input[name="productId"]');
+  if (idField) idField.value = '';
+  if (dom.mediaFiles) dom.mediaFiles.value = '';
+  if (dom.submitProduct) {
+    dom.submitProduct.textContent = 'Publish Product';
+  }
+  dom.cancelEdit?.setAttribute('hidden', '');
+  if (!silent) {
+    showFormMessage(dom.productMessage, '');
+  }
+}
+
+function openImageModal(product) {
+  if (!dom.imageModal || !dom.modalStage || !dom.modalThumbs || !dom.modalName || !dom.modalPrice || !dom.modalDescription) {
+    return;
+  }
+
+  const media = getProductMedia(product);
+  currentGallery = { product, media, index: 0 };
+  setGalleryIndex(0, false);
+
+  dom.modalName.textContent = product.name;
+  dom.modalPrice.textContent = currencyFormatter.format(product.price);
+  dom.modalDescription.textContent = product.description;
+
+  toggleModal(dom.imageModal, true);
+  logEvent('product.viewImage', { id: product.id, name: product.name, mediaIndex: 0, mediaType: media[0]?.kind || 'image' });
+}
+
+async function refreshProducts() {
+  productCache = await dataProvider.listProducts();
+  renderProducts();
+  hydrateCategories();
+  hydrateFeatured();
+  renderAdminProducts();
+}
+
+async function refreshEvents() {
+  if (!dataProvider.listEvents) return;
+  try {
+    eventCache = await dataProvider.listEvents();
+  } catch (error) {
+    console.error('Failed to load events', error);
+    eventCache = [];
+  }
+  renderAdminEvents();
 }
 
 function addToCart(product) {
-  const cart = getCart();
-  const existing = cart.find((item) => item.id === product.id);
+  const existing = cartCache.find((item) => item.id === product.id);
   if (existing) {
     existing.quantity += 1;
   } else {
     const coverImage = getPrimaryImageUrl(getProductMedia(product));
-    cart.push({ id: product.id, name: product.name, price: product.price, image: coverImage, quantity: 1 });
+    cartCache.push({ id: product.id, name: product.name, price: product.price, image: coverImage, quantity: 1 });
   }
-  saveCart(cart);
+  saveCart(cartCache);
   logEvent('cart.add', { id: product.id, name: product.name });
+}
+
+function removeCartItem(id) {
+  const removed = cartCache.find((item) => item.id === id);
+  cartCache = cartCache.filter((item) => item.id !== id);
+  saveCart(cartCache);
+  if (removed) {
+    logEvent('cart.remove', { id: removed.id, name: removed.name });
+  }
 }
 
 function updateCartUI(cart) {
@@ -574,194 +747,56 @@ function updateCartUI(cart) {
   dom.cartTotal.textContent = currencyFormatter.format(total);
 }
 
-function removeCartItem(id) {
-  const cart = getCart();
-  const removed = cart.find((item) => item.id === id);
-  const updated = cart.filter((item) => item.id !== id);
-  saveCart(updated);
-  if (removed) {
-    logEvent('cart.remove', { id: removed.id, name: removed.name });
-  }
+function getCart() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.CART)) || [];
 }
 
-function renderAdminDashboard() {
-  if (!dom.adminProductList || !dom.adminEventList || !dom.adminEventSummary) return;
-  if (!isAdmin()) {
-    dom.adminProductList.innerHTML = '';
-    dom.adminEventList.innerHTML = '';
-    dom.adminEventSummary.innerHTML = '';
-    return;
-  }
-  renderAdminProducts();
-  renderAdminEvents();
+function saveCart(cart) {
+  localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
+  updateCartUI(cart);
 }
 
-function renderAdminProducts() {
-  if (!dom.adminProductList) return;
-  const products = [...getProducts()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  if (!products.length) {
-    dom.adminProductList.innerHTML = '<div class="admin-event-empty">No products yet. Publish your first piece to see it listed here.</div>';
-    return;
+function getProducts() {
+  return productCache;
+}
+
+function getEventsList() {
+  return eventCache;
+}
+
+function getFilters() {
+  if (!dom.filterForm) return { query: '', category: 'all', sort: 'newest' };
+  const formData = new FormData(dom.filterForm);
+  return {
+    query: (formData.get('query') || '').toLowerCase(),
+    category: formData.get('category') || 'all',
+    sort: formData.get('sort') || 'newest'
+  };
+}
+
+function applyFilters(products, { query, category, sort }) {
+  let result = [...products];
+
+  if (query) {
+    result = result.filter((product) => {
+      return [product.name, product.category, product.description]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
   }
 
-  dom.adminProductList.innerHTML = '';
+  if (category && category !== 'all') {
+    result = result.filter((product) => product.category === category);
+  }
 
-  products.forEach((product) => {
-    const row = document.createElement('article');
-    row.className = 'admin-product-row';
-    const featuredPill = product.featured ? '<span class="pill">Featured</span>' : '';
-    row.innerHTML = `
-      <header>
-        <h5>${product.name}</h5>
-        ${featuredPill}
-      </header>
-      <div class="meta">${product.category} • ${currencyFormatter.format(product.price)}</div>
-      <div class="meta">${product.media?.length || 0} media item${product.media?.length === 1 ? '' : 's'}</div>
-      <div class="meta">Published ${formatTimestamp(product.createdAt)}</div>
-      <div class="admin-product-actions">
-        <button data-edit-product="${product.id}">Edit</button>
-        <button data-delete-product="${product.id}">Remove</button>
-      </div>
-    `;
-
-    row.querySelector('[data-edit-product]')?.addEventListener('click', () => handleEditProduct(product.id));
-    row.querySelector('[data-delete-product]')?.addEventListener('click', () => handleDeleteProduct(product.id));
-
-    dom.adminProductList.appendChild(row);
+  result.sort((a, b) => {
+    if (sort === 'price-asc') return a.price - b.price;
+    if (sort === 'price-desc') return b.price - a.price;
+    return (b.createdAt || 0) - (a.createdAt || 0);
   });
-}
 
-function renderAdminEvents() {
-  if (!dom.adminEventList || !dom.adminEventSummary) return;
-  const events = getEvents();
-  const summary = summarizeEvents(events);
-
-  if (!events.length) {
-    dom.adminEventSummary.innerHTML = '<div class="admin-note">No activity recorded yet. Shopper and inquiry events will appear here once your community interacts with the site.</div>';
-    dom.adminEventList.innerHTML = '<div class="admin-event-empty">No events logged.</div>';
-    return;
-  }
-
-  dom.adminEventSummary.innerHTML = `
-    <span><strong>${events.length}</strong> total events logged</span>
-    <span><strong>${summary['product.viewImage'] || 0}</strong> gallery views</span>
-    <span><strong>${summary['cart.add'] || 0}</strong> cart additions</span>
-    <span><strong>${summary['checkout.start'] || 0}</strong> checkout attempts</span>
-    <span><strong>${summary['contact.submit'] || 0}</strong> inquiries received</span>
-  `;
-
-  const recent = events.slice(-20).reverse();
-  dom.adminEventList.innerHTML = '';
-
-  recent.forEach((event) => {
-    const row = document.createElement('article');
-    row.className = 'admin-event-row';
-    row.innerHTML = `
-      <header>
-        <h5>${formatEventLabel(event.type, event.detail)}</h5>
-        <span class="pill">${getEventCategory(event.type)}</span>
-      </header>
-      <div class="meta">${formatTimestamp(event.timestamp)}</div>
-      <div class="meta">${formatEventDetail(event.type, event.detail)}</div>
-    `;
-    dom.adminEventList.appendChild(row);
-  });
-}
-
-function handleEditProduct(id) {
-  if (!dom.productForm || !isAdmin()) return;
-  const products = getProducts();
-  const product = products.find((item) => item.id === id);
-  if (!product) return;
-
-  editingProductId = product.id;
-  const idField = dom.productForm.querySelector('input[name="productId"]');
-  const nameField = dom.productForm.querySelector('input[name="name"]');
-  const categoryField = dom.productForm.querySelector('input[name="category"]');
-  const priceField = dom.productForm.querySelector('input[name="price"]');
-  const imageField = dom.productForm.querySelector('input[name="image"]');
-  const descriptionField = dom.productForm.querySelector('textarea[name="description"]');
-  const mediaField = dom.productForm.querySelector('textarea[name="media"]');
-  const featuredField = dom.productForm.querySelector('input[name="featured"]');
-
-  if (idField) idField.value = product.id;
-  if (nameField) nameField.value = product.name;
-  if (categoryField) categoryField.value = product.category;
-  if (priceField) priceField.value = product.price ?? '';
-  if (imageField) imageField.value = product.image;
-  if (descriptionField) descriptionField.value = product.description;
-  if (mediaField) {
-    const extras = getProductMedia(product)
-      .slice(1)
-      .map((item) => item.url)
-      .join('\n');
-    mediaField.value = extras;
-  }
-  if (featuredField) {
-    featuredField.checked = Boolean(product.featured);
-  }
-
-  if (dom.submitProduct) {
-    dom.submitProduct.textContent = 'Update Product';
-  }
-  dom.cancelEdit?.removeAttribute('hidden');
-  showFormMessage(dom.productMessage, 'Editing product. Update the details and click Update Product to save.');
-  dom.productForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function handleDeleteProduct(id) {
-  if (!isAdmin()) return;
-  const products = getProducts();
-  const target = products.find((item) => item.id === id);
-  if (!target) return;
-
-  const confirmed = confirm(`Remove "${target.name}" from the collection?`);
-  if (!confirmed) return;
-
-  const remaining = products.filter((item) => item.id !== id);
-  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(remaining));
-  renderProducts();
-  hydrateCategories();
-  hydrateFeatured();
-  renderAdminDashboard();
-  showFormMessage(dom.productMessage, 'Product removed from the collection.');
-  logEvent('product.delete', { id: target.id, name: target.name });
-  handleCancelEdit(true);
-  setTimeout(() => showFormMessage(dom.productMessage, ''), 3000);
-}
-
-function handleCancelEdit(silent = false) {
-  if (!dom.productForm) return;
-  editingProductId = null;
-  dom.productForm.reset();
-  const idField = dom.productForm.querySelector('input[name="productId"]');
-  const mediaField = dom.productForm.querySelector('textarea[name="media"]');
-  if (idField) idField.value = '';
-  if (mediaField) mediaField.value = '';
-  if (dom.submitProduct) {
-    dom.submitProduct.textContent = 'Publish Product';
-  }
-  dom.cancelEdit?.setAttribute('hidden', '');
-  if (!silent) {
-    showFormMessage(dom.productMessage, '');
-  }
-}
-
-function openImageModal(product) {
-  if (!dom.imageModal || !dom.modalStage || !dom.modalThumbs || !dom.modalName || !dom.modalPrice || !dom.modalDescription) {
-    return;
-  }
-
-  const media = getProductMedia(product);
-  currentGallery = { product, media, index: 0 };
-  setGalleryIndex(0, false);
-
-  dom.modalName.textContent = product.name;
-  dom.modalPrice.textContent = currencyFormatter.format(product.price);
-  dom.modalDescription.textContent = product.description;
-
-  toggleModal(dom.imageModal, true);
-  logGalleryView(product, 0);
+  return result;
 }
 
 function hydrateCategories() {
@@ -769,9 +804,7 @@ function hydrateCategories() {
   const select = dom.filterForm.querySelector('select[name="category"]');
   if (!select) return;
 
-  const products = getProducts();
-  const categories = Array.from(new Set(products.map((item) => item.category))).sort();
-
+  const categories = Array.from(new Set(getProducts().map((item) => item.category))).sort();
   select.innerHTML = '<option value="all">All Categories</option>' + categories.map((category) => `<option value="${category}">${category}</option>`).join('');
 }
 
@@ -790,37 +823,152 @@ function hydrateFeatured() {
   dom.featuredCTA.dataset.id = featured.id;
 }
 
-function bootstrapEvents() {
-  const stored = safeParse(localStorage.getItem(STORAGE_KEYS.EVENTS));
-  if (!Array.isArray(stored)) {
-    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify([]));
+function createProductCard(product) {
+  const card = document.createElement('article');
+  card.className = 'product-card';
+  card.dataset.productId = product.id;
+
+  const media = getProductMedia(product);
+  const coverMarkup = renderProductCover(media[0], product.name);
+
+  card.innerHTML = `
+    <button type="button" class="product-image-button" data-view-product="${product.id}">
+      ${coverMarkup}
+    </button>
+    <div class="product-body">
+      <h3>${product.name}</h3>
+      <p>${product.description}</p>
+      <div class="product-footer">
+        <span class="product-price-tag">${currencyFormatter.format(product.price)}</span>
+        <button class="button secondary" data-add-to-cart="${product.id}">Add to Cart</button>
+      </div>
+    </div>
+  `;
+
+  card.querySelector('[data-view-product]')?.addEventListener('click', () => openImageModal(product));
+  card.querySelector('[data-add-to-cart]')?.addEventListener('click', () => addToCart(product));
+  return card;
+}
+
+function getProductMedia(product) {
+  if (product?.media && product.media.length) {
+    return product.media.map(normalizeMediaItem).filter(Boolean);
+  }
+  const fallback = product?.image || FALLBACK_IMAGE;
+  return [createMediaItem(fallback)];
+}
+
+function renderProductCover(media, alt) {
+  const kind = media?.kind || 'image';
+  const preview = getMediaPreview(media);
+  const safeAlt = alt || 'Product media';
+  const videoClass = kind === 'video' || kind === 'youtube' || kind === 'vimeo' ? ' video' : '';
+  return `<div class="product-cover${videoClass}"><img src="${preview}" alt="${safeAlt}" onerror="this.src='${FALLBACK_IMAGE}';" /></div>`;
+}
+
+function getMediaPreview(media) {
+  if (!media) return FALLBACK_IMAGE;
+  if (media.poster) return media.poster;
+  if (media.kind === 'image') return media.url;
+  if (media.kind === 'youtube') {
+    const id = extractYouTubeId(media.url);
+    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : FALLBACK_IMAGE;
+  }
+  if (media.kind === 'vimeo') {
+    return FALLBACK_IMAGE;
+  }
+  return FALLBACK_IMAGE;
+}
+
+function renderGalleryStage() {
+  if (!dom.modalStage || !currentGallery.media.length) return;
+  const media = currentGallery.media[currentGallery.index];
+  const productName = currentGallery.product?.name || 'Product';
+  const mediaAlt = `${productName} media ${currentGallery.index + 1}`;
+
+  let markup = '';
+  switch (media.kind) {
+    case 'image':
+      markup = `<img src="${media.url}" alt="${mediaAlt}" onerror="this.src='${FALLBACK_IMAGE}';" />`;
+      break;
+    case 'youtube':
+      markup = `<iframe src="${getYouTubeEmbed(media.url)}" title="${mediaAlt}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      break;
+    case 'vimeo':
+      markup = `<iframe src="${getVimeoEmbed(media.url)}" title="${mediaAlt}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+      break;
+    case 'video':
+      markup = `<video controls playsinline src="${media.url}" poster="${getMediaPreview(media)}"></video>`;
+      break;
+    default:
+      markup = `<img src="${FALLBACK_IMAGE}" alt="${mediaAlt}" />`;
+  }
+
+  dom.modalStage.innerHTML = markup;
+}
+
+function renderGalleryThumbs() {
+  if (!dom.modalThumbs) return;
+  if (!currentGallery.media.length) {
+    dom.modalThumbs.innerHTML = '';
+    return;
+  }
+
+  dom.modalThumbs.innerHTML = currentGallery.media
+    .map((media, index) => {
+      const preview = getMediaPreview(media);
+      const isVideo = media.kind === 'video' || media.kind === 'youtube' || media.kind === 'vimeo';
+      const badge = isVideo ? '<span class="thumb-badge">&#9658;</span>' : '';
+      const activeClass = index === currentGallery.index ? ' active' : '';
+      return `
+        <button type="button" data-gallery-index="${index}" class="gallery-thumb${activeClass}">
+          <img src="${preview}" alt="Thumbnail ${index + 1}" onerror="this.src='${FALLBACK_IMAGE}';" />
+          ${badge}
+        </button>
+      `;
+    })
+    .join('');
+}
+
+function updateGalleryControls() {
+  const total = currentGallery.media.length;
+  if (!dom.galleryPrev || !dom.galleryNext) return;
+  dom.galleryPrev.disabled = total <= 1 || currentGallery.index === 0;
+  dom.galleryNext.disabled = total <= 1 || currentGallery.index === total - 1;
+}
+
+function setGalleryIndex(index, logInteraction = false) {
+  if (!currentGallery.media.length) return;
+  const total = currentGallery.media.length;
+  const bounded = Math.max(0, Math.min(index, total - 1));
+  const previous = currentGallery.index;
+  currentGallery.index = bounded;
+  renderGalleryStage();
+  renderGalleryThumbs();
+  updateGalleryControls();
+  if (logInteraction && previous !== bounded) {
+    const media = currentGallery.media[bounded];
+    logEvent('product.viewImage', {
+      id: currentGallery.product?.id,
+      name: currentGallery.product?.name,
+      mediaIndex: bounded,
+      mediaType: media?.kind || 'image'
+    });
   }
 }
 
-function getEvents() {
-  const events = safeParse(localStorage.getItem(STORAGE_KEYS.EVENTS));
-  return Array.isArray(events) ? events : [];
+function stepGallery(delta) {
+  if (!currentGallery.media.length) return;
+  setGalleryIndex(currentGallery.index + delta, true);
 }
 
-function saveEvents(events) {
-  localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
-}
-
-function logEvent(type, detail = {}) {
+async function logEvent(type, detail = {}) {
+  if (!dataProvider.logEvent) return;
   try {
-    const events = getEvents();
-    const entry = {
-      id: createId(),
-      type,
-      detail,
-      timestamp: Date.now()
-    };
-    events.push(entry);
-    if (events.length > MAX_EVENTS) {
-      events.splice(0, events.length - MAX_EVENTS);
-    }
-    saveEvents(events);
-    if (isAdmin() && !dom.adminModal?.hasAttribute('hidden')) {
+    const eventRecord = await dataProvider.logEvent(type, detail);
+    if (eventRecord) {
+      const normalized = normalizeEventRecord(eventRecord);
+      eventCache = [normalized, ...eventCache].slice(0, MAX_EVENTS);
       renderAdminEvents();
     }
   } catch (error) {
@@ -904,236 +1052,6 @@ function formatEventDetail(type, detail = {}) {
   }
 }
 
-function normalizeProducts(products) {
-  return (products || []).map(normalizeProduct);
-}
-
-function normalizeProduct(product) {
-  const clone = { ...product };
-  const media = Array.isArray(product.media) ? product.media : [];
-  const normalizedMedia = media
-    .map((item) => normalizeMediaItem(item))
-    .filter(Boolean);
-
-  const primaryImage = (product.image || '').trim();
-  if (primaryImage && !normalizedMedia.some((item) => item.url === primaryImage)) {
-    normalizedMedia.unshift(createMediaItem(primaryImage));
-  }
-
-  if (!normalizedMedia.length) {
-    normalizedMedia.push(createMediaItem(primaryImage || FALLBACK_IMAGE));
-  }
-
-  clone.media = normalizedMedia;
-  clone.image = getPrimaryImageUrl(normalizedMedia);
-  return clone;
-}
-
-function normalizeMediaItem(item) {
-  if (!item) return null;
-  if (typeof item === 'string') {
-    return createMediaItem(item);
-  }
-  if (!item.url) return null;
-  return {
-    ...item,
-    url: item.url,
-    kind: item.kind || item.type || detectMediaKind(item.url)
-  };
-}
-
-function buildMediaList(primary, rawInput) {
-  const entries = [];
-  const push = (url) => {
-    const cleaned = (url || '').trim();
-    if (!cleaned) return;
-    if (entries.some((entry) => entry.url === cleaned)) return;
-    entries.push(createMediaItem(cleaned));
-  };
-
-  push(primary);
-
-  rawInput
-    .split(/\r?\n|,/)
-    .map((value) => value.trim())
-    .forEach(push);
-
-  if (!entries.length) {
-    entries.push(createMediaItem(FALLBACK_IMAGE));
-  }
-
-  return entries;
-}
-
-function createMediaItem(url) {
-  return {
-    url,
-    kind: detectMediaKind(url)
-  };
-}
-
-function detectMediaKind(url) {
-  const value = (url || '').toLowerCase();
-  if (!value) return 'image';
-  if (value.includes('youtube.com') || value.includes('youtu.be')) return 'youtube';
-  if (value.includes('vimeo.com')) return 'vimeo';
-
-  const extensionMatch = value.split('?')[0].split('#')[0].split('.').pop();
-  const extension = (extensionMatch || '').toLowerCase();
-  const imageExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'heic', 'heif', 'svg'];
-  const videoExt = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'm4v'];
-
-  if (imageExt.includes(extension)) return 'image';
-  if (videoExt.includes(extension)) return 'video';
-  return 'image';
-}
-
-function getProductMedia(product) {
-  if (!product) return [createMediaItem(FALLBACK_IMAGE)];
-  if (Array.isArray(product.media) && product.media.length) {
-    return product.media.map(normalizeMediaItem).filter(Boolean);
-  }
-  return [createMediaItem(product.image || FALLBACK_IMAGE)];
-}
-
-function getPrimaryMedia(product) {
-  const media = getProductMedia(product);
-  return media[0] || createMediaItem(FALLBACK_IMAGE);
-}
-
-function getPrimaryImageUrl(mediaList) {
-  const image = mediaList.find((item) => item.kind === 'image');
-  return image ? image.url : mediaList[0]?.url || FALLBACK_IMAGE;
-}
-
-function renderProductCover(media, alt) {
-  const kind = media?.kind || 'image';
-  const preview = getMediaPreview(media);
-  const safeAlt = alt || 'Product media';
-  const videoClass = kind === 'video' || kind === 'youtube' || kind === 'vimeo' ? ' video' : '';
-  return `<div class="product-cover${videoClass}"><img src="${preview}" alt="${safeAlt}" onerror="this.src='${FALLBACK_IMAGE}'; this.onerror=null;" /></div>`;
-}
-
-function getMediaPreview(media) {
-  if (!media) return FALLBACK_IMAGE;
-  if (media.poster) return media.poster;
-  if (media.kind === 'image') return media.url;
-  if (media.kind === 'youtube') {
-    const id = extractYouTubeId(media.url);
-    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : FALLBACK_IMAGE;
-  }
-  if (media.kind === 'vimeo') {
-    return FALLBACK_IMAGE;
-  }
-  return FALLBACK_IMAGE;
-}
-
-function extractYouTubeId(url) {
-  if (!url) return '';
-  const regExp = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|\S*?[?&]v=)|youtu\.be\/)([\w-]{11})/;
-  const match = url.match(regExp);
-  return match ? match[1] : '';
-}
-
-function getYouTubeEmbed(url) {
-  const id = extractYouTubeId(url);
-  return id ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : url;
-}
-
-function getVimeoEmbed(url) {
-  const idMatch = /vimeo\.com\/(?:video\/)?(\d+)/.exec(url || '');
-  const id = idMatch ? idMatch[1] : '';
-  return id ? `https://player.vimeo.com/video/${id}?autoplay=1&title=0&byline=0&portrait=0` : url;
-}
-
-function renderGalleryStage() {
-  if (!dom.modalStage || !currentGallery.media.length) return;
-  const media = currentGallery.media[currentGallery.index];
-  const productName = currentGallery.product?.name || 'Product';
-  const mediaAlt = `${productName} media ${currentGallery.index + 1}`;
-
-  let markup = '';
-  switch (media.kind) {
-    case 'image':
-      markup = `<img src="${media.url}" alt="${mediaAlt}" onerror="this.src='${FALLBACK_IMAGE}'; this.onerror=null;" />`;
-      break;
-    case 'youtube':
-      markup = `<iframe src="${getYouTubeEmbed(media.url)}" title="${mediaAlt}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-      break;
-    case 'vimeo':
-      markup = `<iframe src="${getVimeoEmbed(media.url)}" title="${mediaAlt}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
-      break;
-    case 'video':
-      markup = `<video controls playsinline src="${media.url}" poster="${getMediaPreview(media)}"></video>`;
-      break;
-    default:
-      markup = `<img src="${FALLBACK_IMAGE}" alt="${mediaAlt}" />`;
-  }
-
-  dom.modalStage.innerHTML = markup;
-}
-
-function renderGalleryThumbs() {
-  if (!dom.modalThumbs) return;
-  if (!currentGallery.media.length) {
-    dom.modalThumbs.innerHTML = '';
-    return;
-  }
-
-  dom.modalThumbs.innerHTML = currentGallery.media
-    .map((media, index) => {
-      const preview = getMediaPreview(media);
-      const isVideo = media.kind === 'video' || media.kind === 'youtube' || media.kind === 'vimeo';
-      const badge = isVideo ? '<span class="thumb-badge">&#9658;</span>' : '';
-      const activeClass = index === currentGallery.index ? ' active' : '';
-      return `
-        <button type="button" data-gallery-index="${index}" class="gallery-thumb${activeClass}">
-          <img src="${preview}" alt="Thumbnail ${index + 1}" onerror="this.src='${FALLBACK_IMAGE}'; this.onerror=null;" />
-          ${badge}
-        </button>
-      `;
-    })
-    .join('');
-}
-
-function updateGalleryControls() {
-  const total = currentGallery.media.length;
-  if (!dom.galleryPrev || !dom.galleryNext) return;
-  dom.galleryPrev.disabled = total <= 1 || currentGallery.index === 0;
-  dom.galleryNext.disabled = total <= 1 || currentGallery.index === total - 1;
-}
-
-function setGalleryIndex(index, logInteraction = false) {
-  if (!currentGallery.media.length) return;
-  const total = currentGallery.media.length;
-  const bounded = Math.max(0, Math.min(index, total - 1));
-  const previous = currentGallery.index;
-  currentGallery.index = bounded;
-  renderGalleryStage();
-  renderGalleryThumbs();
-  updateGalleryControls();
-  if (logInteraction && previous !== bounded) {
-    logGalleryView(currentGallery.product, bounded);
-  }
-}
-
-function stepGallery(delta) {
-  if (!currentGallery.media.length) return;
-  setGalleryIndex(currentGallery.index + delta, true);
-}
-
-function logGalleryView(product, index) {
-  if (!product) return;
-  const media = currentGallery.media[index];
-  if (!media) return;
-  logEvent('product.viewImage', {
-    id: product.id,
-    name: product.name,
-    mediaIndex: index,
-    mediaType: media?.kind || 'image'
-  });
-}
-
 function showFormMessage(target, message) {
   if (!target) return;
   target.textContent = message;
@@ -1158,13 +1076,305 @@ function safeParse(value) {
 }
 
 function isAdmin() {
-  return localStorage.getItem(ADMIN_AUTH_KEY) === 'true';
+  return supabaseReady ? Boolean(adminState.supabaseSession) : Boolean(adminState.passcode);
 }
 
 function syncAdminState() {
-  if (isAdmin()) {
-    dom.logoutAdmin?.removeAttribute('hidden');
+  if (supabaseReady) {
+    dom.logoutAdmin?.toggleAttribute('hidden', !adminState.supabaseSession);
   } else {
-    dom.logoutAdmin?.setAttribute('hidden', '');
+    dom.logoutAdmin?.toggleAttribute('hidden', !adminState.passcode);
   }
+}
+
+function createLocalProvider() {
+  function ensureProducts() {
+    const stored = safeParse(localStorage.getItem(STORAGE_KEYS.PRODUCTS));
+    if (!stored || !stored.length) {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(normalizeProducts(defaultProducts)));
+    }
+  }
+
+  function ensureEvents() {
+    const stored = safeParse(localStorage.getItem(STORAGE_KEYS.EVENTS));
+    if (!Array.isArray(stored)) {
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify([]));
+    }
+  }
+
+  function readProducts() {
+    const stored = safeParse(localStorage.getItem(STORAGE_KEYS.PRODUCTS)) || [];
+    return normalizeProducts(stored);
+  }
+
+  function saveProducts(products) {
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+  }
+
+  function readEvents() {
+    const stored = safeParse(localStorage.getItem(STORAGE_KEYS.EVENTS)) || [];
+    return stored.map(normalizeEventRecord);
+  }
+
+  function saveEvents(events) {
+    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events.slice(0, MAX_EVENTS)));
+  }
+
+  return {
+    async init() {
+      ensureProducts();
+      ensureEvents();
+    },
+    async listProducts() {
+      return readProducts();
+    },
+    async createProduct(product) {
+      const products = readProducts();
+      products.push(product);
+      saveProducts(products);
+      return product;
+    },
+    async updateProduct(id, product) {
+      const products = readProducts().map((item) => (item.id === id ? product : item));
+      saveProducts(products);
+      return product;
+    },
+    async deleteProduct(id) {
+      const products = readProducts().filter((item) => item.id !== id);
+      saveProducts(products);
+    },
+    async listEvents() {
+      return readEvents();
+    },
+    async logEvent(type, detail) {
+      const events = readEvents();
+      const event = normalizeEventRecord({ id: createId(), type, detail, createdAt: Date.now() });
+      events.unshift(event);
+      saveEvents(events);
+      return event;
+    },
+    uploadMedia: null
+  };
+}
+
+function createSupabaseProvider() {
+  async function initAuthListeners() {
+    try {
+      const { data } = await supabaseClient.auth.getSession();
+      adminState.supabaseSession = data?.session || null;
+    } catch (error) {
+      console.error('Unable to fetch Supabase session', error);
+    }
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      adminState.supabaseSession = session;
+      syncAdminState();
+      if (session) {
+        refreshProducts();
+        refreshEvents();
+      }
+    });
+  }
+
+  return {
+    async init() {
+      await initAuthListeners();
+    },
+    async listProducts() {
+      const { data, error } = await supabaseClient
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return normalizeProducts(data || []);
+    },
+    async createProduct(product) {
+      const prepared = prepareProductForSupabase(product);
+      const { data, error } = await supabaseClient
+        .from('products')
+        .insert(prepared)
+        .select()
+        .single();
+      if (error) throw error;
+      return normalizeProduct(data);
+    },
+    async updateProduct(id, product) {
+      const prepared = prepareProductForSupabase(product, true);
+      const { data, error } = await supabaseClient
+        .from('products')
+        .update(prepared)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return normalizeProduct(data);
+    },
+    async deleteProduct(id) {
+      const { error } = await supabaseClient
+        .from('products')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    async uploadMedia(productId, file) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const { error } = await supabaseClient.storage.from(storageBucket).upload(fileName, file, {
+        cacheControl: '3600'
+      });
+      if (error) throw error;
+      const { data } = supabaseClient.storage.from(storageBucket).getPublicUrl(fileName);
+      const publicUrl = data?.publicUrl;
+      return {
+        url: publicUrl,
+        kind: detectMediaKind(fileName),
+        storagePath: fileName
+      };
+    },
+    async listEvents() {
+      const { data, error } = await supabaseClient
+        .from('events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(MAX_EVENTS);
+      if (error) throw error;
+      return (data || []).map(normalizeEventRecord);
+    },
+    async logEvent(type, detail) {
+      const payload = {
+        id: createId(),
+        type,
+        detail,
+        created_at: new Date().toISOString()
+      };
+      const { data, error } = await supabaseClient
+        .from('events')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return normalizeEventRecord(data);
+    }
+  };
+}
+
+function prepareProductForSupabase(product, isUpdate = false) {
+  const record = {
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    price: product.price,
+    description: product.description,
+    image: product.image,
+    media: product.media,
+    featured: product.featured
+  };
+  if (!isUpdate) {
+    record.created_at = new Date(product.createdAt || Date.now()).toISOString();
+  }
+  return record;
+}
+
+function normalizeProducts(products) {
+  return (products || [])
+    .map(normalizeProduct)
+    .filter(Boolean);
+}
+
+function normalizeProduct(product) {
+  if (!product) return null;
+  const media = Array.isArray(product.media) ? product.media.map(normalizeMediaItem).filter(Boolean) : [];
+  const createdAt = product.createdAt || product.timestamp || (product.created_at ? new Date(product.created_at).getTime() : Date.now());
+  const image = product.image || getPrimaryImageUrl(media);
+  return {
+    ...product,
+    id: product.id || createId(),
+    image,
+    media: media.length ? media : [createMediaItem(image)],
+    createdAt
+  };
+}
+
+function normalizeMediaItem(item) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    return createMediaItem(item);
+  }
+  if (!item.url) return null;
+  return {
+    url: item.url,
+    kind: item.kind || item.type || detectMediaKind(item.url),
+    poster: item.poster || null,
+    storagePath: item.storagePath || item.path || null
+  };
+}
+
+function normalizeEventRecord(event) {
+  if (!event) return null;
+  return {
+    id: event.id || createId(),
+    type: event.type,
+    detail: event.detail || {},
+    createdAt: event.createdAt || event.timestamp || (event.created_at ? new Date(event.created_at).getTime() : Date.now())
+  };
+}
+
+function buildMediaList(primary, rawInput) {
+  const entries = [];
+  const push = (url) => {
+    const cleaned = (url || '').trim();
+    if (!cleaned) return;
+    if (entries.some((entry) => entry.url === cleaned)) return;
+    entries.push(createMediaItem(cleaned));
+  };
+
+  if (primary) push(primary);
+
+  rawInput
+    .split(/\r?\n|,/)
+    .map((value) => value.trim())
+    .forEach(push);
+
+  return entries;
+}
+
+function createMediaItem(url, extra = {}) {
+  return {
+    url,
+    kind: detectMediaKind(url),
+    ...extra
+  };
+}
+
+function detectMediaKind(url) {
+  const value = (url || '').toLowerCase();
+  if (!value) return 'image';
+  if (value.includes('youtube.com') || value.includes('youtu.be')) return 'youtube';
+  if (value.includes('vimeo.com')) return 'vimeo';
+
+  const extensionMatch = value.split('?')[0].split('#')[0].split('.').pop();
+  const extension = (extensionMatch || '').toLowerCase();
+  const imageExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'heic', 'heif', 'svg'];
+  const videoExt = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'm4v'];
+
+  if (imageExt.includes(extension)) return 'image';
+  if (videoExt.includes(extension)) return 'video';
+  return 'image';
+}
+
+function extractYouTubeId(url) {
+  if (!url) return '';
+  const regExp = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|\S*?[?&]v=)|youtu\.be\/)([\w-]{11})/;
+  const match = url.match(regExp);
+  return match ? match[1] : '';
+}
+
+function getYouTubeEmbed(url) {
+  const id = extractYouTubeId(url);
+  return id ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : url;
+}
+
+function getVimeoEmbed(url) {
+  const idMatch = /vimeo\.com\/(?:video\/)?(\d+)/.exec(url || '');
+  const id = idMatch ? idMatch[1] : '';
+  return id ? `https://player.vimeo.com/video/${id}?autoplay=1&title=0&byline=0&portrait=0` : url;
 }

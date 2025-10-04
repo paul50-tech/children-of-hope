@@ -253,7 +253,11 @@
           Additional media (optional)
           <textarea name="media" rows="3" placeholder="Paste one image or video URL per line"></textarea>
         </label>
-        <p class="form-hint">Supports images (.jpg, .png, .webp) and videos (.mp4, YouTube, Vimeo). First item becomes the cover for shoppers.</p>
+        <label>
+          Upload media (optional)
+          <input type="file" name="mediaFiles" data-media-files accept="image/*,video/*" multiple />
+        </label>
+        <p class="form-hint">Upload files from your computer or paste hosted links above. The first media item becomes the cover.</p>
         <label>
           Description
           <textarea name="description" rows="3" required></textarea>
@@ -306,18 +310,32 @@
     <div class="modal-dialog">
       <button class="modal-close" data-close-login>&times;</button>
       <h3>Administrator Sign In</h3>
-      <p class="modal-subtitle">Enter the admin passcode to manage the Children of Hope collection.</p>
+      <p class="modal-subtitle">Sign in to manage the Children of Hope collection.</p>
       <form data-login-form>
-        <label>
-          Passcode
-          <input type="password" name="passcode" required />
+        <label data-login-email-wrapper>
+          Email
+          <input type="email" name="email" data-login-email />
         </label>
+        <label>
+          Password / Passcode
+          <input type="password" name="password" data-login-password required />
+        </label>
+        <p class="form-hint" data-login-hint>Sign in with your Supabase admin email and password.</p>
         <button type="submit" class="button primary full">Unlock Admin Portal</button>
         <p class="form-message" data-login-message></p>
       </form>
     </div>
   </div>
 
+    <!-- Replace the values below with your Supabase project credentials to enable shared storage. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
+  <script>
+    window.CH_SUPABASE = {
+      url: 'https://YOUR-PROJECT-REF.supabase.co',
+      anonKey: 'YOUR-SUPABASE-ANON-KEY',
+      storageBucket: 'product-media'
+    };
+  </script>
   <script src="assets/js/app.js"></script>
 </body>
 </html>
