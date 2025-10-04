@@ -528,6 +528,25 @@ img {
   color: #fff;
 }
 
+.social-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.social-links li a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+}
+
+.social-links .icon {
+  font-size: 1.15rem;
+}
+
 .modal {
   position: fixed;
   inset: 0;
